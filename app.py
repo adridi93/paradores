@@ -6,9 +6,8 @@ import datetime
 # --- Importaciones de Selenium ---
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.service import Service
+# Service y ChromeDriverManager han sido eliminados
 from selenium.webdriver.chrome.options import Options
-from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import NoSuchElementException, TimeoutException
@@ -21,6 +20,7 @@ def get_chrome_options():
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-extensions") # <-- Importante para Streamlit Cloud
     chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.102 Safari/537.36")
     chrome_options.add_argument('--blink-settings=imagesEnabled=false')
     return chrome_options
@@ -34,13 +34,17 @@ def find_paradores(fecha_entrada, fecha_salida, codigo_promo, progress_bar, stat
     ULTIMO_PARADOR = 90 # Puedes bajarlo a 5 para pruebas rápidas
     
     try:
-        driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=get_chrome_options())
+        # --- ¡CAMBIO CLAVE AQUÍ! ---
+        # Ya no usamos Service ni DriverManager. 
+        # Streamlit Cloud usará el driver instalado por packages.txt
+        driver = webdriver.Chrome(options=get_chrome_options())
+    
     except Exception as e:
         st.error(f"Error al iniciar el navegador (WebDriver): {e}")
-        st.error("Asegúrate de que Google Chrome está instalado en tu sistema si ejecutas localmente.")
+        st.error("Si el error persiste, comprueba los archivos packages.txt y requirements.txt.")
         return []
 
-    wait = WebDriverWait(driver, 15) 
+    wait = WebDriverWait(driver, 6) 
     cookie_wait = WebDriverWait(driver, 3) 
 
     for num in range(PRIMER_PARADOR, ULTIMO_PARADOR + 1):
@@ -149,15 +153,16 @@ with st.form(key="search_form"):
     col1, col2 = st.columns(2)
     
     with col1:
-        # Usamos fechas de 2025 como ejemplo
-        default_in = datetime.date(2025, 11, 9)
-        default_out = datetime.date(2025, 11, 10)
+        # Ponemos la fecha de mañana por defecto
+        today = datetime.date.today()
+        default_in = today + datetime.timedelta(days=1)
+        default_out = today + datetime.timedelta(days=2)
         
         fecha_e_obj = st.date_input("Fecha de Entrada", value=default_in)
         fecha_s_obj = st.date_input("Fecha de Salida", value=default_out)
     
     with col2:
-        promo = st.text_input("Código Promocional (opcional)", value="OFERTA2025")
+        promo = st.text_input("Código Promocional (opcional)", value="")
         
     submit_button = st.form_submit_button(label="🚀 ¡Buscar disponibilidad!")
 
@@ -165,6 +170,8 @@ with st.form(key="search_form"):
 if submit_button:
     if fecha_e_obj >= fecha_s_obj:
         st.error("Error: La fecha de salida debe ser posterior a la de entrada.")
+    elif fecha_e_obj < datetime.date.today():
+         st.error("Error: La fecha de entrada no puede ser anterior a hoy.")
     else:
         # Formateamos las fechas al formato DD-MM-YYYY que necesita el script
         FECHA_ENTRADA_STR = fecha_e_obj.strftime("%d-%m-%Y")
@@ -189,11 +196,12 @@ if submit_button:
         # --- Mostrar resultados ---
         status_text.success("¡Búsqueda finalizada!")
         progress_bar.empty()
-        st.balloons()
+        
 
         if not resultados_ordenados:
             st.warning("No se encontraron Paradores disponibles con esos criterios.")
         else:
+            st.balloons() # ¡Solo muestra globos si hay éxito!
             st.subheader(f"🏆 {len(resultados_ordenados)} Paradores encontrados (ordenados por precio):")
             
             for parador in resultados_ordenados:
